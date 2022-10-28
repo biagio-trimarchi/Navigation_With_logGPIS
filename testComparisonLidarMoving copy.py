@@ -7,132 +7,176 @@ from matplotlib.patches import Wedge        # To draw wedge (Lidar fov)
 
 # LIDAR DATA AND FUNCTIONS
 min_distance = 0.2          # Minimum Lidar Distance 
-max_distance = 4.0          # Maximum Lidar Distance
+max_distance = 2.0          # Maximum Lidar Distance
 
-fov_range = np.pi/2.0       # Field of view
+fov_range = np.pi/3.0       # Field of view (half angular span)
 
 def lidar(p, theta):
     # Simulate Lidar and return both distance lectures and point on obstacles
+    # p : position of the agent
+    # theta : orientation of the agent (angle from lidar direction and x axis, counterclock-wise)
 
-    ray = np.linspace(min_distance, max_distance, 100)                      # Test distances for raycasting
-    angles = np.linspace(-fov_range + theta, fov_range + theta, 30)        # Test angles for raycasting
+    ray = np.linspace(min_distance, max_distance, 100)                  # Testing distances for raycasting
+    angles = np.linspace(-fov_range + theta, fov_range + theta, 30)     # Angles in the field of view
 
-    readings = np.ones(angles.shape)*max_distance
-    boundary_points = []
+    readings = np.ones(angles.shape)*max_distance                       # Allocate array to store readings (and initialize all cells to max_distance)
+    boundary_points = []                                                # Allocate list to store detected boundary points
 
-    i = 0
-    for phi in angles:
-        for dist in ray:
-            test_point = p + dist*np.array([np.cos(phi), np.sin(phi)])
-            if distance(obstacles, test_point) < 0.01:
-                readings[i] = dist
-                boundary_points.append(test_point)
-                break
-        i = i + 1
-    return readings, boundary_points
+    i = 0                                                               # Auxiliary counter for angular direction
+    for phi in angles:                                                  # Loop trough each angle in the field of view
+        for dist in ray:                                                # Loop from min_distance to max_distance
+            test_point = p + dist*np.array([np.cos(phi), np.sin(phi)])  # Compute current test point
+            if distance(obstacles, test_point) < 0.01:                  # If the distance from the obstacles is less then a threshold
+                readings[i] = dist                                      # Store the distance in the readings array
+                boundary_points.append(test_point)                      # and append the new boundary point to the list
+                break                                                   # and break innermost loop (go to next angle)
+        i = i + 1                                                       # next angle
+    return readings, boundary_points                                    # Return the readings and the detected boundary points
 
 def draw_fov(p, theta, ax):
     # Add Lidar Field of View to existing plot
-    left = 180.0/np.pi * (theta + fov_range)
-    right = 180.0/np.pi * (theta - fov_range)
-    fov = Wedge((p[0], p[1]), max_distance, right, left, color="r", alpha=0.3)
-    not_fov = Wedge((p[0], p[1]), min_distance, right, left, color="k", alpha=1.0)
-    ax.add_artist(fov)          # Field of view
-    ax.add_artist(not_fov)      # Too close
+    # p : position of the agent
+    # theta : orientation of the agent (angle from lidar direction and x axis, counterclock-wise)
+    # ax : plot on which draw the fov
+
+    left = 180.0/np.pi * (theta + fov_range)                                    # Left side of the cone
+    right = 180.0/np.pi * (theta - fov_range)                                   # Rigth side of the cone
+    fov = Wedge((p[0], p[1]), max_distance, right, left, color="r", alpha=0.3)      # Build patch 
+    not_fov = Wedge((p[0], p[1]), min_distance, right, left, color="k", alpha=1.0)  # Smaller patch of unseeable points
+    ax.add_artist(fov)          # Add field of view
+    ax.add_artist(not_fov)      # Remove too close points
 
 
 # OBSTACLES DATA AND FUNCTIONS
 
 # Obstacles
-obstacles = []
+obstacles = []      # List of obstacles, for now circle defined by center and radius
 obstacles.append( {'center': np.array([2.0, 2.0]), 'radius': 1.0} )
 obstacles.append( {'center': np.array([4.0, 4.0]), 'radius': 0.5} )
 
 def distance(obstacles, p):
-    # Distance from obstacles
-    d_min = inf
-    for obstacle in obstacles:
-        d = np.linalg.norm(p - obstacle['center']) - obstacle['radius']
-        if d < d_min:
-            d_min = d
-    return d_min
+    # Distance from obstacles (only circles)
+    d_min = inf                 # initialize minimum distance (infinite distance)
+    for obstacle in obstacles:  # loop trough each obstacle
+        d = np.linalg.norm(p - obstacle['center']) - obstacle['radius'] # Compute distance
+        if d < d_min:           # If distance from this obstacle is the minimum on
+            d_min = d           # Update minimum distance
+    return d_min                # Return minimum distance
 
 
 # MAIN
+# In this simulation, the agent circumnavigate an obstacle and collect samples to train 
+# a log-GPIS and a pointwise EDF estimate. We then plot and compare the results
+
 # Agent Data
 C0 = np.array([2.0, 2.0])           # Center of motion
 radius = 2.0                        # Radius of motion        
 theta0 = np.pi/2                    # Initial Orientation
 
 # GP
-logGPIS = GP(2)        # Log gaussian implicit surface
-edfGP = GP(2)          # EDF measured from single samples
+lambda_whittle = 1.5                                # Length scale of Whittle Kernal
+logGPIS = GP(2)                                     # Log gaussian implicit surface
+logGPIS.params.L = sqrt(2 * 3/2) / lambda_whittle   # Length scale of Matern 3_2 (See article, euristic choice)
+edfGP = GP(2)                                       # EDF measured from single samples
+edfGP.params.L = 0.25                                # Length scale for the edgGP
 
 
 # Circular motion
-theta = np.linspace(0, 2*np.pi, 60)
-for th in theta:
-    print("Theta = ", th)
-    p = C0 + radius * np.array([ np.cos(th), np.sin(th)])
+theta = np.linspace(0, 2*np.pi, 60)                 # Angular positions along the chosen circumference
+for th in theta:                                    # Loop trough the circumference
+    # print("Theta = ", th)                         # Debug
+    p = C0 + radius * np.array([ np.cos(th), np.sin(th)])   # Actual position
 
     # Lidar
-    readings, points = lidar(p, theta0 + th)
+    readings, points = lidar(p, theta0 + th)        # Simulate Lidar (theta0 + th is the orientation of the agent)
 
     # Update Log GP Implicit Surface
-    for point in points:
-        if logGPIS.params.N_samples == 0:
-            logGPIS.addSample(point, 1)
-            continue
-        new = True
-        for tr_point in logGPIS.data_x.T:
-            if np.linalg.norm(tr_point - point) < 0.2:
-                new = False
-        if new:
-            logGPIS.addSample(point, 1)
+    for point in points:                            # Loop trough all the detected points
+        if logGPIS.params.N_samples == 0:           # If the GP has no samples 
+            logGPIS.addSample(point, 1)             # Add sample
+            continue                                # Go to next detected point
+        new = True                                  # Assume the detected point is "far enough" from all the samples points of the GP
+        for tr_point in logGPIS.data_x.T:           # Loop trough all the sample point of the GP
+            tr_point = tr_point * logGPIS.params.L  # Scale back the sample point (The implemented GP internally scales the sample points)
+            if np.linalg.norm(tr_point - point) < 0.25:  # If the points are "near"
+                new = False                             # Flag the point as already seen
+        if new:                                     # If the point is new
+            logGPIS.addSample(point, 1)             # Add sample
 
     # Update EDF GP
-    
+    if edfGP.params.N_samples == 0:             # If the GP has no samples
+        edfGP.addSample(p, min(min(readings), max_distance))    # Add sample
+    else:                                       # otherwise
+        new = True                              # Assume the detected point is "far enough" from all the samples points of the GP      
+        for tr_point in edfGP.data_x.T:         # Loop trough all the sample point of the GP
+            tr_point = tr_point * edfGP.params.L    # Scale back the sample point (The implemented GP internally scales the sample points)
+            if np.linalg.norm(tr_point - p) < 0.25:  # If the points are "near"
+                new = False                         # Flag the point as already seen
+        if new:                                     # If the point is new
+            edfGP.addSample(p, min(min(readings), max_distance))    # Add sample
 
 
-print('Travel finished')
-print("Training...")
-EDFgp.train()
-print("Trained")
+print('Travel finished')    # Debug info
+print("Training...")        # Debug info
+
+logGPIS.train()             # Train GP
+edfGP.train()               # Train GP
+
+print("Trained")            # Debug info
 
 # Data for plots
-xlist = np.linspace(-1.0, 5.0, 100)
-ylist = np.linspace(-1.0, 5.0, 100)
-X, Y = np.meshgrid(xlist, ylist)
-Zdist = np.zeros((X.shape))
-Zgp = np.zeros((X.shape))
+xlist = np.linspace(-1.0, 5.0, 20)      # x axis values
+ylist = np.linspace(-1.0, 5.0, 20)      # y axis values
+X, Y = np.meshgrid(xlist, ylist)        # Mesh grid for plot
+Zdist = np.zeros((X.shape))             # EDF grid
+Zgp1 = np.zeros((X.shape))              # log GPIS grid
+Zgp2 = np.zeros((X.shape))              # GP pointwise grid
 
-i = 0
-for xx in xlist:
-    j = 0
-    for yy in ylist:
-        point = np.array([xx, yy])
-        Zdist[i][j] = distance(obstacles, point)
-        Zgp[i][j] = - log(EDFgp.posteriorMean(point)) / EDFgp.params.L
-        j = j + 1
-    i = i + 1
-del i, j
 
-# Plot 
-fig, axs = plt.subplots(1, 2)
-cp = axs[0].contourf(X, Y, Zdist)               # Plot EDF
-fig.colorbar(cp)                               # Add a colorbar to a plot
-for point in EDFgp.data_x.T:
-    axs[0].plot(point[0], point[1], 'o')        # Plot sample points
-# draw_fov(p, theta, axs[0])                      # Draw Lidar
-axs[0].set_title('Filled Contours Plot')
-axs[0].set_xlabel('x (m)')
-axs[0].set_ylabel('y (m)')
+i = 0                                   # x grid cell
+for xx in xlist:                        # Loop trough x
+    j = 0                               # y grid cell
+    for yy in ylist:                    # Loop trough y
+        point = np.array([xx, yy])      # Store grid point
+        Zdist[i][j] = distance(obstacles, point)                                # Compute EDF
+        Zgp1[i][j] = - log(logGPIS.posteriorMean(point)) / logGPIS.params.L     # Compute log GPIS
+        Zgp2[i][j] = edfGP.posteriorMean(point)                                 # Compute GP pointwise
+        j = j + 1                       # Next y grid
+    i = i + 1                           # Next x grid
+del i, j                                # Deallocate memory
 
-cp = axs[1].contourf(X, Y, Zgp)
-for point in EDFgp.data_x.T:
-    axs[1].plot(point[0], point[1], 'o')
-axs[1].set_title('Filled Contours Plot')
-axs[1].set_xlabel('x (m)')
-axs[1].set_ylabel('y (m)')
+# Plots
+max_value = max(Zdist.max(), Zgp1.max(), Zgp2.max())   # Min value for colorbar
+min_value = min(Zdist.min(), Zgp1.min(), Zgp2.min())   # Max value for colorbar
+
+gridsize = (1, 3)                       # Grid of the figure 
+fig = plt.figure(figsize=(8, 12))       # Setuo figure
+ax1 = plt.subplot2grid(gridsize, (0, 0), colspan=1, rowspan=1)          # Real EDF plot
+ax2 = plt.subplot2grid(gridsize, (0, 1), colspan=1, rowspan=1)          # log GPIS plot
+ax3 = plt.subplot2grid(gridsize, (0, 2), colspan=1, rowspan=1)          # Pointwise GP plot        
+
+# EDF plot
+cp = ax1.contourf(X, Y, Zdist, vmin=min_value, vmax=max_value)          # Add a colorbar to a plot
+ax1.set_title('EDF')
+ax1.set_xlabel('x (m)')
+ax1.set_ylabel('y (m)')
+
+cp = ax2.contourf(X, Y, Zgp1, vmin=min_value, vmax=max_value)
+for point in logGPIS.data_x.T:
+    point = point * logGPIS.params.L
+    ax2.plot(point[0], point[1], 'o')
+ax2.set_title('log GPIS')
+ax2.set_xlabel('x (m)')
+ax2.set_ylabel('y (m)')
+
+ax3.contourf(X, Y, Zgp2, vmin=min_value, vmax=max_value)
+for point in edfGP.data_x.T:
+    point = point * edfGP.params.L
+    ax3.plot(point[0], point[1], 'o')
+ax3.set_title('GP pointwise')
+ax3.set_xlabel('x (m)')
+ax3.set_ylabel('y (m)')
+
+plt.colorbar(cp, ax = [ax1, ax2, ax3], location = 'bottom')
 
 plt.show()

@@ -5,7 +5,7 @@ class gpParameters():
     def __init__(self, input_dimension):
         self.input_dimension = input_dimension      # Input Dimension
         self.sigma_err = 0.05                       # Gaussian Error Variance
-        self.L = 20.0                                # Length Scale Matrix
+        self.L = 0.06                                # Length Scale Matrix
         self.N_samples = 0                           # Total Number of Collected Samples
     
 class GaussianProcess:
@@ -38,6 +38,7 @@ class GaussianProcess:
         return -3 * (x1 - x2).T * math.exp(-np.sqrt(3)*r)
 
     def addSample(self, x, y):
+        x = x / self.params.L
         # Add sample to the dataset
         if self.params.N_samples == 0:
             self.data_x = x.reshape((self.params.input_dimension, 1))
@@ -59,7 +60,7 @@ class GaussianProcess:
         self.alpha_wC = np.linalg.solve(self.L_chol_wC.T, np.linalg.solve(self.L_chol_wC, self.data_y))
 
     def posteriorMean(self, x):
-        # x = x/self.params.L
+        x = x/self.params.L
         k = np.zeros((self.params.N_samples, 1))
         for i in range(self.params.N_samples):
             k[i] = self.k(self.data_x[:, i], x)

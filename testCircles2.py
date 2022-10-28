@@ -20,7 +20,9 @@ obstacles.append( {'center': np.array([4.0, 4.0]), 'radius': 0.5} )
 # Debug distance function
 # print(distance(obstacles, np.array([4.0, 3.0])))
 
+lambda_whittle = 20
 EDFgp = GP(2)
+EDFgp.params.L = sqrt(2 * 3/2) / lambda_whittle
 angles = np.linspace(0, 2*np.pi, 5)
 training_points =  []
 for theta in angles:
@@ -51,7 +53,7 @@ for xx in xlist:
     for yy in ylist:
         point = np.array([xx, yy])
         Zdist[i][j] = distance(obstacles, point)
-        Zgp[i][j] = - log(EDFgp.posteriorMean(point)) / EDFgp.params.L
+        Zgp[i][j] = - log(EDFgp.posteriorMean(point)) / lambda_whittle
         j = j + 1
     i = i + 1
 del i, j

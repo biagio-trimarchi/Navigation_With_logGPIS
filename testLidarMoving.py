@@ -115,6 +115,7 @@ fig, axs = plt.subplots(1, 2)
 cp = axs[0].contourf(X, Y, Zdist)               # Plot EDF
 fig.colorbar(cp)                               # Add a colorbar to a plot
 for point in EDFgp.data_x.T:
+    point = point * EDFgp.params.L
     axs[0].plot(point[0], point[1], 'o')        # Plot sample points
 # draw_fov(p, theta, axs[0])                      # Draw Lidar
 axs[0].set_title('Filled Contours Plot')
@@ -123,6 +124,7 @@ axs[0].set_ylabel('y (m)')
 
 cp = axs[1].contourf(X, Y, Zgp)
 for point in EDFgp.data_x.T:
+    point = point * EDFgp.params.L
     axs[1].plot(point[0], point[1], 'o')
 axs[1].set_title('Filled Contours Plot')
 axs[1].set_xlabel('x (m)')
