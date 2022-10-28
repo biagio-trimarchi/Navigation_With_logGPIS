@@ -1,4 +1,3 @@
-from dis import dis
 from math import inf, log, sqrt
 from matern32GP import GaussianProcess as GP
 import numpy as np
@@ -156,27 +155,30 @@ ax2 = plt.subplot2grid(gridsize, (0, 1), colspan=1, rowspan=1)          # log GP
 ax3 = plt.subplot2grid(gridsize, (0, 2), colspan=1, rowspan=1)          # Pointwise GP plot        
 
 # EDF plot
-cp = ax1.contourf(X, Y, Zdist, vmin=min_value, vmax=max_value)          # Add a colorbar to a plot
-ax1.set_title('EDF')
-ax1.set_xlabel('x (m)')
-ax1.set_ylabel('y (m)')
+cp = ax1.contourf(X, Y, Zdist, vmin=min_value, vmax=max_value)          # Color plot
+ax1.set_title('EDF')                                                    # Title
+ax1.set_xlabel('x (m)')                                                 # x label
+ax1.set_ylabel('y (m)')                                                 # y label
 
-cp = ax2.contourf(X, Y, Zgp1, vmin=min_value, vmax=max_value)
-for point in logGPIS.data_x.T:
-    point = point * logGPIS.params.L
-    ax2.plot(point[0], point[1], 'o')
-ax2.set_title('log GPIS')
-ax2.set_xlabel('x (m)')
-ax2.set_ylabel('y (m)')
+# log GPIS plot
+ax2.contourf(X, Y, Zgp1, vmin=min_value, vmax=max_value)                # Color plot
+for point in logGPIS.data_x.T:                                          # Loop trough the data in GP
+    point = point * logGPIS.params.L                                    # Scale back the data
+    ax2.plot(point[0], point[1], 'o')                                   # Plot sample point
+ax2.set_title('log GPIS')                                               # Title
+ax2.set_xlabel('x (m)')                                                 # x label
+ax2.set_ylabel('y (m)')                                                 # y label
 
-ax3.contourf(X, Y, Zgp2, vmin=min_value, vmax=max_value)
-for point in edfGP.data_x.T:
-    point = point * edfGP.params.L
-    ax3.plot(point[0], point[1], 'o')
-ax3.set_title('GP pointwise')
-ax3.set_xlabel('x (m)')
-ax3.set_ylabel('y (m)')
+# Pointwise GP plot
+ax3.contourf(X, Y, Zgp2, vmin=min_value, vmax=max_value)                # Color plot
+for point in edfGP.data_x.T:                                            # Loop trough the data in GP
+    point = point * edfGP.params.L                                      # Scale back the data
+    ax3.plot(point[0], point[1], 'o')                                   # Plot sample point
+ax3.set_title('GP pointwise')                                           # Title
+ax3.set_xlabel('x (m)')                                                 # x label
+ax3.set_ylabel('y (m)')                                                 # y label
 
-plt.colorbar(cp, ax = [ax1, ax2, ax3], location = 'bottom')
+# Colorbar
+plt.colorbar(cp, ax = [ax1, ax2, ax3], location = 'bottom')             # Colorbar
 
 plt.show()
