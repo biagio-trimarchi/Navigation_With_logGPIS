@@ -52,8 +52,8 @@ for xx in xlist:
     j = 0
     for yy in ylist:
         point = np.array([xx, yy])
-        Zdist[i][j] = distance(obstacles, point)
-        Zgp[i][j] = - log(EDFgp.posteriorMean(point)) / lambda_whittle
+        Zdist[j][i] = distance(obstacles, point)
+        Zgp[j][i] = - log(EDFgp.posteriorMean(point)) / lambda_whittle
         j = j + 1
     i = i + 1
 del i, j

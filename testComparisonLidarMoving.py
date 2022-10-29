@@ -137,9 +137,9 @@ for xx in xlist:                        # Loop trough x
     j = 0                               # y grid cell
     for yy in ylist:                    # Loop trough y
         point = np.array([xx, yy])      # Store grid point
-        Zdist[i][j] = distance(obstacles, point)                                # Compute EDF
-        Zgp1[i][j] = - log(logGPIS.posteriorMean(point)) / logGPIS.params.L     # Compute log GPIS
-        Zgp2[i][j] = edfGP.posteriorMean(point)                                 # Compute GP pointwise
+        Zdist[j][i] = distance(obstacles, point)                                # Compute EDF
+        Zgp1[j][i] = - log(logGPIS.posteriorMean(point)) / logGPIS.params.L     # Compute log GPIS
+        Zgp2[j][i] = edfGP.posteriorMean(point)                                 # Compute GP pointwise
         j = j + 1                       # Next y grid
     i = i + 1                           # Next x grid
 del i, j                                # Deallocate memory
