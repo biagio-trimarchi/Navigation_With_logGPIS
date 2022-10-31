@@ -63,6 +63,6 @@ class GaussianProcess:
         x = x/self.params.L
         k = np.zeros((self.params.N_samples, 1))
         for i in range(self.params.N_samples):
-            k[i] = self.k(self.data_x[:, i], x)
+            k[i] = self.k(x, self.data_x[:, i])
 
         return k.T @ self.alpha_wC

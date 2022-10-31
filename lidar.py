@@ -11,7 +11,7 @@ from matplotlib.patches import Wedge        # To draw wedge (Lidar fov)
 min_distance = 0.2          # Minimum Lidar Distance 
 max_distance = 2.0          # Maximum Lidar Distance
 
-fov_range = np.pi/3.0       # Field of view (half angular span)
+fov_range = np.pi/1.0       # Field of view (half angular span)
 
 # Lidar functions
 def lidar(p, theta):
