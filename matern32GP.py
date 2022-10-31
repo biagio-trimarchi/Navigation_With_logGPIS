@@ -66,3 +66,10 @@ class GaussianProcess:
             k[i] = self.k(x, self.data_x[:, i])
 
         return k.T @ self.alpha_wC
+    
+    def gradientPosterionMean(self, x):
+        x = x/self.params.L
+        dk = np.block([
+            [self.dkdx(x, xs)] for xs in self.data_x.T 
+        ])
+        return self.alpha_wC.T @ dk

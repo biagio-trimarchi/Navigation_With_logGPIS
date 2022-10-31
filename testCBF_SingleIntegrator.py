@@ -26,7 +26,7 @@ class Simulation:
     # initialize
     def initialize(self):
         # Simulation Data
-        self.T = 10.0        # Total simulation time
+        self.T = 20.0        # Total simulation time
         self.dt = 0.01        # Sampling period
         self.t = 0           # Actual time
 
@@ -35,10 +35,16 @@ class Simulation:
         self.pGoal = np.array([4.0, 4.0])       # Final goal
         self.pStory = []                        # List of positions
         self.p = self.p0                        # Actual position
+        agentDynamics.AGENT_TYPE = 'SINGLE_INTEGRATOR_2D'       # Agent type
         agentDynamics.initialize_agent()
 
+        # Lidar parameters
+        lidar.fov_range = np.pi         # fov range
+        lidar.min_distance = 0.1        # Minimum sensing distance
+        lidar.max_distance = 1.0        # Minimum sensing distance 
+
         # Controller data
-        self.kp = 0.5                    # Position gain
+        self.kp = 1.5                    # Position gain
 
         # Plot variables
         self.uNom = np.zeros((2, ))      # Actual nominal input
@@ -48,11 +54,12 @@ class Simulation:
         self.time_stamps = []            # List of time stamps
 
         # Control barrier function data
-        self.alpha = 2.0                                         # Class K multiplier
-        self.BARRIER_TYPE = 'GROUND_TRUTH'                       # Barrier function type ('GROUND_TRUTH', 'LOG_GPIS', 'POINTWISE')
-        agentDynamics.AGENT_TYPE = 'SINGLE_INTEGRATOR_2D'        # Agent type
-        self.edfGP = GP(2)                                       # Pointwise estimator
-
+        self.alpha = 2.0                                        # Class K multiplier
+        self.BARRIER_TYPE = 'LOG_GPIS'                          # Barrier function type ('GROUND_TRUTH', 'LOG_GPIS', 'POINTWISE')
+        
+        # GP
+        self.edfGP = GP(2)                                      # Pointwise estimator
+        logGPIS.resolution = 0.05
 
     # controller
     def controller(self):
@@ -67,10 +74,15 @@ class Simulation:
             alpha_h = self.alpha * ( np.array(obstacles.allDistances(self.p)) )
             gradH = np.block([[ (self.p - obs['center']).reshape((1, 2)) / obstacles.distance(self.p, obs)] for obs in obstacles.obstacles ])
             self.u = solve_qp(np.eye(2), self.uNom, gradH.T, -alpha_h)[0]
-        elif self.BARRIER_TYPE == 'LOG_GPIS':
-            pass
         elif self.BARRIER_TYPE == 'POINTWISE':
             pass
+        elif self.BARRIER_TYPE == 'LOG_GPIS':
+            if logGPIS.getSamplesNumber() > 0:
+                alpha_h = np.array([self.alpha * logGPIS.d(self.p)])
+                gradH = logGPIS.gradd(self.p)
+                self.u = solve_qp(np.eye(2), self.uNom, gradH.T, -alpha_h)[0]
+            else:
+                self.u = self.uNom
         else:
             self.u = self.uNom
 
@@ -82,7 +94,27 @@ class Simulation:
             self.safetyFilter()                                                                 # Filter control input
             self.p = self.p + agentDynamics.dynamics(self.p, self.u).flatten() * self.dt        # Update agent state
 
-            # Update GPs
+            # Simulate Lidar
+            # Lidar
+            readings, points = lidar.read(self.p, 0)        # Simulate Lidar
+
+            train = False
+            # Update Log GP Implicit Surface
+            for point in points:                            # Loop trough all the detected points
+                if logGPIS.getSamplesNumber() == 0:         # If the GP has no samples 
+                    logGPIS.addSample(point)                # Add sample
+                    train = True
+                    continue                                # Go to next detected point
+                new = True                                  # Assume the detected point is "far enough" from all the samples points of the GP
+                if logGPIS.checkCollected(point):          # If already collected
+                        new = False                         # Flag the point as already seen
+                if new:                                     # If the point is new
+                    logGPIS.addSample(point)                # Add sample
+                    train = True
+            if train:
+                logGPIS.train()                             # Train GP
+                print('train')
+
 
             # Advance simulation time
             self.t = self.t + self.dt

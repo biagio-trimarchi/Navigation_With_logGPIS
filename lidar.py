@@ -14,7 +14,7 @@ max_distance = 2.0          # Maximum Lidar Distance
 fov_range = np.pi/1.0       # Field of view (half angular span)
 
 # Lidar functions
-def lidar(p, theta):
+def read(p, theta):
     # Simulate Lidar and return both distance lectures and point on obstacles
     # p : position of the agent
     # theta : orientation of the agent (angle from lidar direction and x axis, counterclock-wise)
@@ -29,7 +29,7 @@ def lidar(p, theta):
     for phi in angles:                                                  # Loop trough each angle in the field of view
         for dist in ray:                                                # Loop from min_distance to max_distance
             test_point = p + dist*np.array([np.cos(phi), np.sin(phi)])  # Compute current test point
-            if obstacles.distance(obstacles, test_point) < 0.01:                  # If the distance from the obstacles is less then a threshold
+            if obstacles.minDistance(test_point) < 0.01:                  # If the distance from the obstacles is less then a threshold
                 readings[i] = dist                                      # Store the distance in the readings array
                 boundary_points.append(test_point)                      # and append the new boundary point to the list
                 break                                                   # and break innermost loop (go to next angle)
