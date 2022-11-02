@@ -9,7 +9,7 @@ import numpy as np
 lambda_whittle = 1.5                                        # Length scale of Whittle Kernal
 regressor = GP(2)                                           # Log gaussian implicit surface
 regressor.params.L = math.sqrt(2 * 3/2) / lambda_whittle    # Length scale of Matern 3_2 (See article, euristic choice)
-resolution = 0.2                                           # Resolution of state space (two point are considered the same if their distance is less than the resolution)
+resolution = 0.2                                            # Resolution of state space (two point are considered the same if their distance is less than the resolution)
 
 def addSample(p):
     # Add sample to log GPIS
@@ -26,7 +26,7 @@ def gradd(p):
     # Compute gradient of estimated distance field
     dd = d(p)
     gradd = regressor.gradientPosterionMean(p)
-    return - gradd / (lambda_whittle * dd)
+    return -gradd / (lambda_whittle * dd)
 
 def getSamplesNumber():
     return regressor.params.N_samples

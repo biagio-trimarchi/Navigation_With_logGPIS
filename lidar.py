@@ -11,7 +11,9 @@ from matplotlib.patches import Wedge        # To draw wedge (Lidar fov)
 min_distance = 0.2          # Minimum Lidar Distance 
 max_distance = 2.0          # Maximum Lidar Distance
 
-fov_range = np.pi/1.0       # Field of view (half angular span)
+fov_range = np.pi/1.0                               # Field of view (half angular span)
+resolution_distance = 100                           # Number of tested point on each ray
+resolution_angle = int(fov_range * 180 / np.pi)     # Number of readed angles (default = 1 each sessagesimal degree) 
 
 # Lidar functions
 def read(p, theta):
@@ -19,8 +21,8 @@ def read(p, theta):
     # p : position of the agent
     # theta : orientation of the agent (angle from lidar direction and x axis, counterclock-wise)
 
-    ray = np.linspace(min_distance, max_distance, 100)                  # Testing distances for raycasting
-    angles = np.linspace(-fov_range + theta, fov_range + theta, 30)     # Angles in the field of view
+    ray = np.linspace(min_distance, max_distance, resolution_distance)              # Testing distances for raycasting
+    angles = np.linspace(-fov_range + theta, fov_range + theta, resolution_angle)   # Angles in the field of view
 
     readings = np.ones(angles.shape)*max_distance                       # Allocate array to store readings (and initialize all cells to max_distance)
     boundary_points = []                                                # Allocate list to store detected boundary points
@@ -29,7 +31,7 @@ def read(p, theta):
     for phi in angles:                                                  # Loop trough each angle in the field of view
         for dist in ray:                                                # Loop from min_distance to max_distance
             test_point = p + dist*np.array([np.cos(phi), np.sin(phi)])  # Compute current test point
-            if obstacles.minDistance(test_point) < 0.01:                  # If the distance from the obstacles is less then a threshold
+            if obstacles.minDistance(test_point) < 0.01:               # If the distance from the obstacles is less then a threshold
                 readings[i] = dist                                      # Store the distance in the readings array
                 boundary_points.append(test_point)                      # and append the new boundary point to the list
                 break                                                   # and break innermost loop (go to next angle)

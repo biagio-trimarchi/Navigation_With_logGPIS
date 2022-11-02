@@ -78,6 +78,7 @@ del i, j
 # Plot
 fig, ax = plt.subplots()
 cp = ax.contourf(X, Y, Zdist)
+cp = ax.contourf(X, Y, Zdist-1, cmap='binary', alpha=0.1)
 fig.colorbar(cp) # Add a colorbar to a plot
 ax.set_title('Filled Contours Plot')
 ax.set_xlabel('x (m)')

@@ -73,11 +73,11 @@ radius = 2.0                        # Radius of motion
 theta0 = np.pi/2                    # Initial Orientation
 
 # GP
-lambda_whittle = 1.5                                # Length scale of Whittle Kernal
+lambda_whittle = 1.4                                # Length scale of Whittle Kernal
 logGPIS = GP(2)                                     # Log gaussian implicit surface
 logGPIS.params.L = sqrt(2 * 3/2) / lambda_whittle   # Length scale of Matern 3_2 (See article, euristic choice)
 edfGP = GP(2)                                       # EDF measured from single samples
-edfGP.params.L = 0.25                                # Length scale for the edgGP
+edfGP.params.L = 1.0                               # Length scale for the edgGP
 
 
 # Circular motion
@@ -124,12 +124,16 @@ edfGP.train()               # Train GP
 print("Trained")            # Debug info
 
 # Data for plots
-xlist = np.linspace(-1.0, 5.0, 20)      # x axis values
-ylist = np.linspace(-1.0, 5.0, 20)      # y axis values
+xlist = np.linspace(-1.0, 5.0, 100)      # x axis values
+ylist = np.linspace(-1.0, 5.0, 100)      # y axis values
 X, Y = np.meshgrid(xlist, ylist)        # Mesh grid for plot
 Zdist = np.zeros((X.shape))             # EDF grid
 Zgp1 = np.zeros((X.shape))              # log GPIS grid
 Zgp2 = np.zeros((X.shape))              # GP pointwise grid
+Zdistsafe = np.zeros((X.shape))         # Safe region real 
+Zgp1safe = np.zeros((X.shape))          # Safe region log GPIS
+Zgp2safe = np.zeros((X.shape))          # Safe region GP pointwise
+
 
 
 i = 0                                   # x grid cell
@@ -140,11 +144,19 @@ for xx in xlist:                        # Loop trough x
         Zdist[j][i] = distance(obstacles, point)                                # Compute EDF
         Zgp1[j][i] = - log(logGPIS.posteriorMean(point)) / logGPIS.params.L     # Compute log GPIS
         Zgp2[j][i] = edfGP.posteriorMean(point)                                 # Compute GP pointwise
+        if Zdist[j][i] < 0.0:
+            Zdistsafe[j][i] = 1
+        if Zgp1[j][i] < 0.0:
+            Zgp1safe[j][i] = 1
+        if Zgp2[j][i] < 0.0:
+            Zgp2safe[j][i] = 1
         j = j + 1                       # Next y grid
     i = i + 1                           # Next x grid
 del i, j                                # Deallocate memory
 
 # Plots
+
+# Colormaps
 max_value = max(Zdist.max(), Zgp1.max(), Zgp2.max())   # Min value for colorbar
 min_value = min(Zdist.min(), Zgp1.min(), Zgp2.min())   # Max value for colorbar
 
@@ -179,6 +191,37 @@ ax3.set_xlabel('x (m)')                                                 # x labe
 ax3.set_ylabel('y (m)')                                                 # y label
 
 # Colorbar
-plt.colorbar(cp, ax = [ax1, ax2, ax3], location = 'bottom')             # Colorbar
+fig.colorbar(cp, ax = [ax1, ax2, ax3], location = 'bottom')             # Colorbar
+
+# Safe region
+gridsize = (1, 3)                       # Grid of the figure 
+fig = plt.figure(figsize=(8, 12))       # Setuo figure
+ax1 = plt.subplot2grid(gridsize, (0, 0), colspan=1, rowspan=1)          # Real EDF plot
+ax2 = plt.subplot2grid(gridsize, (0, 1), colspan=1, rowspan=1)          # log GPIS plot
+ax3 = plt.subplot2grid(gridsize, (0, 2), colspan=1, rowspan=1)          # Pointwise GP plot  
+
+# EDF plot
+cp = ax1.contourf(X, Y, Zdistsafe, cmap='binary')                       # Color plot
+ax1.set_title('EDF')                                                    # Title
+ax1.set_xlabel('x (m)')                                                 # x label
+ax1.set_ylabel('y (m)')                                                 # y label
+
+# log GPIS plot
+ax2.contourf(X, Y, Zgp1safe, cmap='binary')                             # Color plot
+for point in logGPIS.data_x.T:                                          # Loop trough the data in GP
+    point = point * logGPIS.params.L                                    # Scale back the data
+    ax2.plot(point[0], point[1], 'o')                                   # Plot sample point
+ax2.set_title('log GPIS')                                               # Title
+ax2.set_xlabel('x (m)')                                                 # x label
+ax2.set_ylabel('y (m)')                                                 # y label
+
+# Pointwise GP plot
+ax3.contourf(X, Y, Zgp2safe, cmap='binary')                             # Color plot
+for point in edfGP.data_x.T:                                            # Loop trough the data in GP
+    point = point * edfGP.params.L                                      # Scale back the data
+    ax3.plot(point[0], point[1], 'o')                                   # Plot sample point
+ax3.set_title('GP pointwise')                                           # Title
+ax3.set_xlabel('x (m)')                                                 # x label
+ax3.set_ylabel('y (m)')                                                 # y label
 
 plt.show()

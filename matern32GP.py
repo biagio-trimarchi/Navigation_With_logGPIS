@@ -5,7 +5,7 @@ class gpParameters():
     def __init__(self, input_dimension):
         self.input_dimension = input_dimension      # Input Dimension
         self.sigma_err = 0.05                       # Gaussian Error Variance
-        self.L = 0.06                                # Length Scale Matrix
+        self.L = 1.0                                # Length Scale Matrix
         self.N_samples = 0                           # Total Number of Collected Samples
     
 class GaussianProcess:
