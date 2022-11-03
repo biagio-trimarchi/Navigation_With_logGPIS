@@ -28,8 +28,8 @@ class Simulation:
     # initialize
     def initialize(self):
         # Simulation Data
-        self.T = 5.0        # Total simulation time
-        self.dt = 0.01        # Sampling period
+        self.T = 2.0        # Total simulation time
+        self.dt = 0.1        # Sampling period
         self.t = 0           # Actual time
 
         # Agent data
@@ -57,7 +57,7 @@ class Simulation:
 
         # Control barrier function data
         self.alpha = 2.0                                        # Class K multiplier
-        self.BARRIER_TYPE = 'LOG_GPIS'                         # Barrier function type ('GROUND_TRUTH', 'LOG_GPIS', 'POINTWISE')
+        self.BARRIER_TYPE = 'GROUND_TRUTH'                         # Barrier function type ('GROUND_TRUTH', 'LOG_GPIS', 'POINTWISE')
         self.safeDist = 0.1                                     # Safe distance
         
         # GP
@@ -81,7 +81,7 @@ class Simulation:
 
         if self.BARRIER_TYPE == 'GROUND_TRUTH':
             alpha_h = self.alpha * ( np.array(obstacles.allDistances(self.p)) ) - self.safeDist
-            gradH = np.block([[ (self.p - obs['center']).reshape((1, 2)) / obstacles.distance(self.p, obs)] for obs in obstacles.obstacles ])
+            gradH = np.block([[ (self.p - obs['center']) / obstacles.distance(self.p, obs)] for obs in obstacles.obstacles ])
             self.u = solve_qp(np.eye(2), self.uNom, gradH.T, -alpha_h)[0]
         elif self.BARRIER_TYPE == 'POINTWISE':
             if self.edfGP.params.N_samples > 0:
@@ -225,11 +225,11 @@ class Simulation:
 # main
 def main():
     sim = Simulation()      # Instantiate simulation
-    
+
     sim.initialize()        # Initialize simulation
     sim.run()               # Run simulation
-    # sim.plot()              # Plot results
-    sim.animation()         # Save animations
+    sim.plot()              # Plot results
+    # sim.animation()         # Save animations
 
 # Run main when the script is executed
 if __name__ == '__main__':

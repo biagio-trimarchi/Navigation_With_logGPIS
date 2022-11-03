@@ -36,6 +36,18 @@ class GaussianProcess:
         r = np.linalg.norm(x1 - x2)     
 
         return -3 * (x1 - x2).T * math.exp(-np.sqrt(3)*r)
+    
+    def ddkddx(self, x1, x2):
+        # Reshape vectors to avoid computation problems
+        x1 = x1.reshape((self.params.input_dimension, 1))
+        x2 = x2.reshape((self.params.input_dimension, 1))
+        r = np.linalg.norm(x1 - x2)
+
+        # When distance between sample is small, avoid division by 0 (the term goes asympotically to 0)
+        if r < 10.0**(-6.0):
+            return -3 * np.eye(self.params.input_dimension) * math.exp(-np.sqrt(3)*r)
+
+        return ( -3 * np.eye(self.params.input_dimension) + 3*np.sqrt(3)*(x1-x2)*(x1-x2).T/r) * math.exp(-np.sqrt(3)*r)
 
     def addSample(self, x, y):
         x = x / self.params.L
@@ -73,3 +85,13 @@ class GaussianProcess:
             [self.dkdx(x, xs)] for xs in self.data_x.T 
         ])
         return self.alpha_wC.T @ dk
+    
+    def hessianPosteriorMean(self, x):
+        x = x/self.params.L
+        sum = np.zeros((self.params.input_dimension, self.params.input_dimension))
+
+        i = 0
+        for xs in self.data_x.T:
+            sum = sum + self.alpha_wC[i] * self.ddkddx(x, xs)
+            i = i+1
+        return sum

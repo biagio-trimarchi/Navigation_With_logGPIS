@@ -25,8 +25,14 @@ def d(p):
 def gradd(p):
     # Compute gradient of estimated distance field
     dd = d(p)
-    gradd = regressor.gradientPosterionMean(p)
-    return -gradd / (lambda_whittle * dd)
+    grad = regressor.gradientPosterionMean(p)
+    return -grad / (lambda_whittle * dd)
+
+def hessd(p):
+    dd = d(p)
+    grad = regressor.gradientPosterionMean(p)
+    hess = regressor.hessianPosteriorMean(p)
+    return grad.T @ grad / (lambda_whittle*dd**2) - hess / (lambda_whittle * dd)
 
 def getSamplesNumber():
     return regressor.params.N_samples
