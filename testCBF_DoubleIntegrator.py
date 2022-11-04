@@ -67,7 +67,7 @@ class Simulation:
         self.kh = self.alpha1*self.alpha2
         self.klfh = self.alpha1 + self.alpha2
 
-        self.BARRIER_TYPE = 'POINTWISE'                          # Barrier function type ('GROUND_TRUTH', 'LOG_GPIS', 'POINTWISE')
+        self.BARRIER_TYPE = 'POINTWISE_VARIANCE'                         # Barrier function type ('GROUND_TRUTH', 'LOG_GPIS', 'POINTWISE', 'POINTWISE_VARIANCE')
         self.safeDist = 0.2                                     # Safe distance
         
         # GP
@@ -81,6 +81,8 @@ class Simulation:
             self.logGPISanimationSetup()
         if self.BARRIER_TYPE == 'POINTWISE':
             self.edfGPanimationSetup()
+        if self.BARRIER_TYPE == 'POINTWISE_VARIANCE':
+            self.edfGPVarianceAnimationSetup()
 
     # controller
     def controller(self):
@@ -154,6 +156,32 @@ class Simulation:
                 self.u = solve_qp(np.eye(2), self.uNom, lie_gf_h.T, -alpha_h - alpha_lfh - lie_f2_h)[0]
             else:
                 self.u = self.uNom
+        elif self.BARRIER_TYPE == 'POINTWISE_VARIANCE':
+            if self.edfGP.params.N_samples > 0:
+                grad_h = (np.concatenate( (self.edfGP.gradientPosterionMean(self.p).flatten(), np.zeros((2,))) )).reshape((1,4))
+                hess_h = np.block( [ 
+                        [self.edfGP.hessianPosteriorMean(self.p) , np.zeros((2,2))],
+                        [np.zeros((2,2)), np.zeros((2,2))]
+                    ]
+                )
+                lie_f_h = grad_h
+                lie_f_h = grad_h @ agentDynamics.f(self.x)
+                lie_f_h = lie_f_h.flatten()
+                lie_f2_h = agentDynamics.f(self.x).T @ hess_h @ agentDynamics.f(self.x) + grad_h @ agentDynamics.df(self.x) @ agentDynamics.f(self.x)
+                lie_f2_h = lie_f2_h.flatten()
+                lie_gf_h = agentDynamics.f(self.x).T @ hess_h @ agentDynamics.g(self.x) + grad_h @ agentDynamics.df(self.x) @ agentDynamics.g(self.x)
+                alpha_h = self.kh * (self.edfGP.posteriorMean(self.p) - self.safeDist).flatten()
+                alpha_lfh = self.klfh * lie_f_h
+
+                lie_g_sigma2 = np.concatenate( ( self.edfGP.gradientPosteriorVariance(self.p).reshape((2,)), np.zeros((2,))) )
+                lie_g_sigma2 = lie_g_sigma2.reshape( (1, 4) )
+                lie_g_sigma2 = lie_g_sigma2 @ agentDynamics.g(self.x)
+                lie_g_sigma2 = lie_g_sigma2.flatten()
+                
+
+                self.u = solve_qp(np.eye(2), self.uNom - lie_g_sigma2, lie_gf_h.T, -alpha_h - alpha_lfh - lie_f2_h)[0]
+            else:
+                self.u = self.uNom
         else:
             self.u = self.uNom
 
@@ -193,7 +221,7 @@ class Simulation:
                 self.logGPISanimationAddFrame()
             
             # Pointwise GP
-            if self.BARRIER_TYPE == 'POINTWISE':
+            if self.BARRIER_TYPE == 'POINTWISE' or self.BARRIER_TYPE == 'POINTWISE_VARIANCE':
                 train = False
                 if self.edfGP.params.N_samples == 0:                                            # If the GP has no samples
                     self.edfGP.addSample(self.p, min(min(readings), lidar.max_distance))        # Add sample
@@ -276,7 +304,7 @@ class Simulation:
     def logGPISanimationSave(self):
         print("Creating animation")
         animation = self.camera_logGPISanimation.animate()
-        animation.save('logGPISsafeSetExpansion.mp4')
+        animation.save('logGPIS_safeSetExpansion.mp4')
         print("Done")
     
     def edfGPanimationSetup(self):
@@ -316,7 +344,7 @@ class Simulation:
     def edfGPanimationSave(self):
         print("Creating animation")
         animation = self.camera_edfGPanimation.animate()
-        animation.save('edfGPsafeSetExpansion.mp4')
+        animation.save('edfGP_safeSetExpansion.mp4')
         print("Done")
 
     def animation(self):
@@ -324,6 +352,54 @@ class Simulation:
             self.logGPISanimationSave()
         if self.BARRIER_TYPE == 'POINTWISE':
             self.edfGPanimationSave()
+    
+    def edfGPVarianceAnimationSetup(self):
+        # Setup figure and axes for animation
+        self.fig_edfGPanimation, self.ax_edfGPanimation = plt.subplots()
+        self.camera_edfGPanimation = Camera(self.fig_edfGPanimation)
+
+    def edfGPVarianceAnimationAddFrame(self):
+        xlist = np.linspace(-1.0, 5.0, 100)      # x axis values
+        ylist = np.linspace(-1.0, 5.0, 100)      # y axis values
+        X, Y = np.meshgrid(xlist, ylist)        # Mesh grid for plot
+        ZdistSafe = np.zeros((X.shape))         # EDF safe set grid
+        ZgpSafe = np.zeros((X.shape))           # log GPIS safe set grid
+        # Safe set computation
+        i = 0                                   # x grid cell
+        for xx in xlist:                        # Loop trough x
+            j = 0                               # y grid cell
+            for yy in ylist:                    # Loop trough y
+                point = np.array([xx, yy])      # Store grid point
+                if obstacles.minDistance(point) < self.safeDist:    # If point is not safe
+                    ZdistSafe[j][i] = 1.0                           # Flag it
+                if self.edfGP.params.N_samples > 0:                           
+                    if self.edfGP.posteriorMean(point) < self.safeDist:            # If point is supposed not safe
+                        ZgpSafe[j][i] = 1.0                         # Flag it
+                j = j + 1                       # Next y grid
+            i = i + 1                           # Next x grid
+        
+        # self.ax_logGPISanimation.clear()        # Clear axes for drawing
+        self.ax_edfGPanimation.pcolormesh(X, Y, ZgpSafe, cmap='binary')
+        self.ax_edfGPanimation.pcolormesh(X, Y, ZdistSafe, cmap='autumn', alpha=0.2)
+        self.ax_edfGPanimation.plot(self.p[0], self.p[1], 'o', color='k')
+        self.ax_edfGPanimation.set_xlabel('x (m)')
+        self.ax_edfGPanimation.set_xlabel('y (m)')
+        
+        self.camera_edfGPanimation.snap()
+
+    def edfGPVarianceAnimationSave(self):
+        print("Creating animation")
+        animation = self.camera_edfGPanimation.animate()
+        animation.save('edfGPVariance_safeSetExpansion.mp4')
+        print("Done")
+
+    def animation(self):
+        if self.BARRIER_TYPE == 'LOG_GPIS':
+            self.logGPISanimationSave()
+        if self.BARRIER_TYPE == 'POINTWISE':
+            self.edfGPanimationSave()
+        if self.BARRIER_TYPE == 'POINTWISE_VARIANCE':
+            self.edfGPVarianceAnimationSave()
 
 # main
 def main():

@@ -9,8 +9,8 @@ import matplotlib.pyplot as plt
 
 # Obstacles list
 obstacles = []                                                              # List of obstacles, for now circle defined by center and radius
-obstacles.append( {'center': np.array([2.0, 2.5]), 'radius': 1.0} )         # Obstacle
-obstacles.append( {'center': np.array([4.0, 3.0]), 'radius': 0.5} )         # Obstacle
+obstacles.append( {'center': np.array([2.0, 3.0]), 'radius': 1.0} )         # Obstacle
+obstacles.append( {'center': np.array([4.0, 2.5]), 'radius': 0.5} )         # Obstacle
 obstacles.append( {'center': np.array([2.0, 0.0]), 'radius': 0.5} )         # Obstacle
 
 

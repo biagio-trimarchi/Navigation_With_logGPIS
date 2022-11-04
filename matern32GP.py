@@ -63,13 +63,13 @@ class GaussianProcess:
     
     def train(self):
         # Train the gaussian process
-        self.K_wC = np.zeros((self.params.N_samples, self.params.N_samples))
+        self.K = np.zeros((self.params.N_samples, self.params.N_samples))
         for row in range(self.params.N_samples):
             for col in range(self.params.N_samples):
-                self.K_wC[row, col] = self.k(self.data_x[:, row], self.data_x[:, col])
-        self.K_wC = self.K_wC + self.params.sigma_err * np.eye(self.params.N_samples)
-        self.L_chol_wC = np.linalg.cholesky(self.K_wC)
-        self.alpha_wC = np.linalg.solve(self.L_chol_wC.T, np.linalg.solve(self.L_chol_wC, self.data_y))
+                self.K[row, col] = self.k(self.data_x[:, row], self.data_x[:, col])
+        self.K = self.K + self.params.sigma_err * np.eye(self.params.N_samples)
+        self.L_chol = np.linalg.cholesky(self.K)
+        self.alpha = np.linalg.solve(self.L_chol.T, np.linalg.solve(self.L_chol, self.data_y))
 
     def posteriorMean(self, x):
         x = x/self.params.L
@@ -77,14 +77,14 @@ class GaussianProcess:
         for i in range(self.params.N_samples):
             k[i] = self.k(x, self.data_x[:, i])
 
-        return k.T @ self.alpha_wC
+        return k.T @ self.alpha
     
     def gradientPosterionMean(self, x):
         x = x/self.params.L
         dk = np.block([
             [self.dkdx(x, xs)] for xs in self.data_x.T 
         ])
-        return self.alpha_wC.T @ dk
+        return self.alpha.T @ dk
     
     def hessianPosteriorMean(self, x):
         x = x/self.params.L
@@ -92,6 +92,23 @@ class GaussianProcess:
 
         i = 0
         for xs in self.data_x.T:
-            sum = sum + self.alpha_wC[i] * self.ddkddx(x, xs)
+            sum = sum + self.alpha[i] * self.ddkddx(x, xs)
             i = i+1
         return sum
+    
+    def posteriorVariance(self, x):
+        x = x/self.params.L
+        k = np.zeros((self.params.N_samples, 1))
+        for i in range(self.params.N_samples):
+            k[i] = self.k(x, self.data_x[:, i])
+        return self.k(x, x) - k.T @ self.K @ k.T
+    
+    def gradientPosteriorVariance(self, x):
+        x = x/self.params.L
+        k = np.zeros((self.params.N_samples, 1))
+        for i in range(self.params.N_samples):
+            k[i] = self.k(x, self.data_x[:, i])
+        dk = np.block([
+            [self.dkdx(x, xs)] for xs in self.data_x.T 
+        ])
+        return - 2 * k.T @ (self.K)**(-1) @ dk      # K is inverted :/
