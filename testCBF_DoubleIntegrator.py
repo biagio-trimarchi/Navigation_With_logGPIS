@@ -5,6 +5,8 @@
 #               - Ground truth (EDF)
 #               - log GPIS     
 #               - Pointwise Gaussian Process
+#               - Pointwise Gaussian Process with variance in the cost
+#               - Pointwise Gaussian Process with observer
 # The agent dynamics is a simple double integrator controlled
 # in acceleration
 
@@ -23,14 +25,14 @@ from celluloid import Camera                    # Camera for animated plots
 
 class Simulation:
     def __init__(self):
-        self.initialize()   # Initialize simulation
+        self.initialize()       # Initialize simulation
 
     # initialize
     def initialize(self):
         # Simulation Data
-        self.T = 10.0        # Total simulation time
-        self.dt = 0.1      # Sampling period
-        self.t = 0          # Actual time
+        self.T = 50.0          # Total simulation time
+        self.dt = 0.01         # Sampling period
+        self.t = 0.0           # Actual time
 
         # Agent data
         self.p0 = np.array([0.0, 0.0])          # Initial position
@@ -51,30 +53,49 @@ class Simulation:
         lidar.max_distance = 2.0        # Minimum sensing distance 
 
         # Controller data
-        self.kp = 0.8                   # Position gain
-        self.kv = 1.2                   # Velocity gain
+        self.kp = 0.1                   # Position gain
+        self.kv = 0.3                   # Velocity gain
 
         # Plot variables
-        self.uNom = np.zeros((2, ))      # Actual nominal input
-        self.u = np.zeros((2, ))         # Actual input
-        self.uNomStory = []              # List of nominal inputs
-        self.uStory = []                 # List of inputs
-        self.time_stamps = []            # List of time stamps
+        self.uNom = np.zeros((2, ))                 # Actual nominal input
+        self.u = np.zeros((2, ))                    # Actual input
+        self.uNomStory = []                         # List of nominal inputs
+        self.uStory = []                            # List of inputs
+        self.time_stamps = [self.t]                 # List of time stamps
+        self.minDistStory = [lidar.max_distance]    # List of minimum distance values
 
         # Control barrier function data
-        self.alpha1 = 2.0                                        # Class K multiplier
-        self.alpha2 = 2.0                                        # Class K multiplier
-        self.kh = self.alpha1*self.alpha2
-        self.klfh = self.alpha1 + self.alpha2
+        self.alpha1 = 0.3                               # Class K multiplier
+        self.alpha2 = 0.2                               # Class K multiplier
+        self.kh = self.alpha1*self.alpha2               # h multiplier
+        self.klfh = self.alpha1 + self.alpha2           # L_f h multiplier
 
-        self.BARRIER_TYPE = 'POINTWISE_VARIANCE'                         # Barrier function type ('GROUND_TRUTH', 'LOG_GPIS', 'POINTWISE', 'POINTWISE_VARIANCE')
-        self.safeDist = 0.2                                     # Safe distance
+        self.BARRIER_TYPE = 'POINTWISE_OBSERVER'                  # Barrier function type: 
+                                                            # 'GROUND_TRUTH', 
+                                                            # 'LOG_GPIS',
+                                                            # 'POINTWISE', 
+                                                            # 'POINTWISE_VARIANCE'
+                                                            # 'POINTWISE_OBSERVER'
+        self.safeDist = 0.1                             # Safe distance
         
         # GP
-        self.edfGP = GP(2)                                      # Pointwise estimator
-        self.edfGP.params.sigma_err = 0.01                      # Sensor noise variance
-        self.edfGP.params.L = 0.3                               # GP pointwise length scale
-        logGPIS.resolution = 0.2                               # Resolution of the state space
+        self.edfGP = GP(2)                          # Pointwise estimator
+        self.edfGP.params.sigma_err = 0.01          # Sensor noise variance
+        self.edfGP.params.L = 0.3                   # GP pointwise length scale
+        self.edfGPobs = GP(4)                       # GP poinwise with observer
+        self.edfGPobs.params.sigma_err = 0.01       # GP noise variance
+        self.edfGPobs.params.L = 0.5                # GP length scale
+        logGPIS.resolution = 0.2                    # Resolution of the state space
+
+        # Observer
+        self.z0 = np.array([obstacles.minDistance(self.p), 0])      # Observer initial state
+        self.z = self.z0.copy()                                     # Observer actuale state
+        self.zStory = [self.z0.copy()]                              # Observer state history
+        self.obs_lambda1 = 3.0                                      # Hurwitz polynomial root 1
+        self.obs_lambda2 = 5.0                                      # Hurwitz polynomial root 2
+        self.obs_k1 = self.obs_lambda1 + self.obs_lambda2           # Hurwitz polynomial coefficient
+        self.obs_k2 = self.obs_lambda1 * self.obs_lambda2           # Hurwitz polynomial coefficient
+        self.obs_l = 10.0                                           # Observer gain
 
         # Animation
         if self.BARRIER_TYPE == 'LOG_GPIS':
@@ -86,13 +107,20 @@ class Simulation:
 
     # controller
     def controller(self):
-        self.uNom = -self.kp * (self.p - self.pGoal) - self.kv * self.v     # PD contoller
+        self.uNom = -self.kp * (self.p - self.pGoal) - self.kv * self.v     # PD controller
+    
+    def observer(self):
+        y = min(self.readings) - self.z[0]                      # Innovation term
+        self.z[0] = self.z[0] + (self.z[1] + self.obs_l*self.obs_k1*y)*self.dt      # Update state 1
+        self.z[1] = self.z[1] + (self.obs_l**2*self.obs_k1*y)*self.dt               # Update state 2
 
     # safetyFilter
     def safetyFilter(self):
         # Build matrices
+        # Solve quadratic programming
         # Return u
 
+        # Ground truth barrier function
         if self.BARRIER_TYPE == 'GROUND_TRUTH':
             grad_h = np.block([
                     [ np.concatenate( ((self.p - obs['center']) / obstacles.distance(self.p, obs), np.zeros((2,)) ))] for obs in obstacles.obstacles 
@@ -115,7 +143,8 @@ class Simulation:
             alpha_h = self.kh * ( np.array(obstacles.allDistances(self.p)) - self.safeDist)
             alpha_lfh = self.klfh * lie_f_h
             self.u = solve_qp(np.eye(2), self.uNom, lie_gf_h.T, -alpha_h - alpha_lfh - lie_f2_h)[0]
-            # self.u = self.uNom
+
+        # log-GPIS based barrier function
         elif self.BARRIER_TYPE == 'LOG_GPIS':
             if logGPIS.getSamplesNumber() > 0:
                 grad_h = (np.concatenate( (logGPIS.gradd(self.p).flatten(), np.zeros((2,))) )).reshape((1,4))
@@ -136,6 +165,8 @@ class Simulation:
 
             else:
                 self.u = self.uNom
+
+        # Pointwise GP min-norm based barrier function
         elif self.BARRIER_TYPE == 'POINTWISE':
             if self.edfGP.params.N_samples > 0:
                 grad_h = (np.concatenate( (self.edfGP.gradientPosterionMean(self.p).flatten(), np.zeros((2,))) )).reshape((1,4))
@@ -156,6 +187,8 @@ class Simulation:
                 self.u = solve_qp(np.eye(2), self.uNom, lie_gf_h.T, -alpha_h - alpha_lfh - lie_f2_h)[0]
             else:
                 self.u = self.uNom
+
+        # Pointwise GP min-norm based barrier function modified with variance
         elif self.BARRIER_TYPE == 'POINTWISE_VARIANCE':
             if self.edfGP.params.N_samples > 0:
                 grad_h = (np.concatenate( (self.edfGP.gradientPosterionMean(self.p).flatten(), np.zeros((2,))) )).reshape((1,4))
@@ -182,28 +215,47 @@ class Simulation:
                 self.u = solve_qp(np.eye(2), self.uNom - lie_g_sigma2, lie_gf_h.T, -alpha_h - alpha_lfh - lie_f2_h)[0]
             else:
                 self.u = self.uNom
+
+        # Pointwise GP min-norm with observer based barrier function
+        elif self.BARRIER_TYPE == 'POINTWISE_OBSERVER':
+            if self.edfGPobs.params.N_samples > 0:
+                grad_psi = self.edfGPobs.gradientPosterionMean(self.x)
+                lie_f2_h = (grad_psi @ agentDynamics.f(self.x)).flatten()
+                lie_gf_h = grad_psi @ agentDynamics.g(self.x)
+                alpha_lfh = self.klfh * self.z[1]
+                alpha_h = self.kh * (self.z[0] - self.safeDist )
+
+                self.u = solve_qp(np.eye(2), self.uNom, lie_gf_h.T, -alpha_h - alpha_lfh - lie_f2_h)[0]
+            else:
+                self.u = self.uNom
+
+        # No filter    
         else:
             self.u = self.uNom
 
     # run
     def run(self):
         while self.t < self.T:
-            # Update agent state
+            # Controller
             self.controller()                                                                   # Compute nominal control law
             self.safetyFilter()                                                                 # Filter control input
+            
+            # Dynamic update
             self.x = self.x + agentDynamics.dynamics(self.x, self.u).flatten() * self.dt        # Update agent state
-            self.p = self.x[0:2]
-            self.v = self.x[2:]
+            self.p = self.x[0:2]                                                                # Extract actual position from state
+            self.v = self.x[2:]                                                                 # Extract actual velocity from state
 
             # Simulate Lidar
-            # Lidar
-            readings, points = lidar.read(self.p, 0)            # Simulate Lidar
+            self.readings, self.points = lidar.read(self.p, 0)                                  # Simulate Lidar
 
+            self.observer()                                                                     # Update observer
+
+            # Update GP if used
             # log GPIS
             if self.BARRIER_TYPE == 'LOG_GPIS':
                 train = False
                 # Update Log GP Implicit Surface
-                for point in points:                            # Loop trough all the detected points
+                for point in self.points:                       # Loop trough all the detected points
                     if logGPIS.getSamplesNumber() == 0:         # If the GP has no samples 
                         logGPIS.addSample(point)                # Add sample
                         train = True
@@ -224,7 +276,7 @@ class Simulation:
             if self.BARRIER_TYPE == 'POINTWISE' or self.BARRIER_TYPE == 'POINTWISE_VARIANCE':
                 train = False
                 if self.edfGP.params.N_samples == 0:                                            # If the GP has no samples
-                    self.edfGP.addSample(self.p, min(min(readings), lidar.max_distance))        # Add sample
+                    self.edfGP.addSample(self.p, min(self.readings))                            # Add sample
                     train = True
                 else:                                                                           # otherwise
                     new = True                                                                  # Assume the detected point is "far enough" from all the samples points of the GP      
@@ -233,23 +285,43 @@ class Simulation:
                         if np.linalg.norm(tr_point - self.p) < logGPIS.resolution:              # If the points are "near"
                             new = False                                                         # Flag the point as already seen
                     if new:                                                                     # If the point is new
-                        self.edfGP.addSample(self.p, min(min(readings), lidar.max_distance))    # Add sample
+                        self.edfGP.addSample(self.p, min(self.readings))                        # Add sample
                         train = True
                 if train:
                     self.edfGP.train()                                      # Train GP
                     print('New samples collected: pointwise GP trained')    # Debug
                 
                 self.edfGPanimationAddFrame()
+            
+            # Pointwise GP observer
+            if self.BARRIER_TYPE == 'POINTWISE_OBSERVER':
+                train = False
+                if self.edfGPobs.params.N_samples == 0:                                         # If the GP has no samples
+                    self.edfGPobs.addSample(self.x, self.z[1])                                     # Add sample
+                    train = True                                                                
+                else:                                                                           # Otherwise
+                    new = True                                                                  # Assume the detected point is "far enough" from all the samples points of the GP
+                    for tr_point in self.edfGPobs.data_x.T:                                     # Loop trough all the sample point of the GP
+                        tr_point = tr_point * self.edfGPobs.params.L                               # Scale back the sample point (The implemented GP internally scales the sample points)
+                        if np.linalg.norm(tr_point - self.x) < 0.05:                             # If the points are "near"
+                            new = False                                                         # Flag the point as already seen
+                    if new:                                                                # If the point is new
+                        self.edfGPobs.addSample(self.x, self.z[1])                             # Add sample
+                        train = True
+                if train:
+                    self.edfGPobs.train()                                                       # Train GP
+                    print('New sample collected: pointwise GP with observer trained')           # Debug
 
+            # Advance simulation    
+            self.t = self.t + self.dt               # Advance simulation time
 
-            # Advance simulation time
-            self.t = self.t + self.dt
-
-        # Update history variables
-            self.pStory.append(self.p)              # Position
-            self.uStory.append(self.u)              # Actual control law
-            self.uNomStory.append(self.uNom)        # Nominal control law
-            self.time_stamps.append(self.t)         # Time instants
+            # Update history variables
+            self.pStory.append(self.p)                                  # Position
+            self.uStory.append(self.u)                                  # Actual control law
+            self.uNomStory.append(self.uNom)                            # Nominal control law
+            self.time_stamps.append(self.t)                             # Time instants
+            self.minDistStory.append(obstacles.minDistance(self.p))     # Minimum distance
+            self.zStory.append(self.z.copy())
 
             # DEBIG
             # print(self.t, self.edfGP.posteriorMean(self.p).flatten(), obstacles.minDistance(self.p)) # Debig
@@ -265,6 +337,13 @@ class Simulation:
         obstacles.plot(ax_environment)
         ax_environment.legend()
 
+        fig_observer, ax_observer = plt.subplots()
+        ax_observer.plot(self.time_stamps, self.minDistStory, label = 'Minimum distance')
+        ax_observer.plot(self.time_stamps, [item[0] for item in self.zStory], label = 'Observer')
+        ax_observer.set_title('Observer')
+        ax_observer.set_xlabel('Time (t)')
+        ax_observer.set_ylabel('Distance (m)')
+        ax_observer.legend()
         plt.show()
     
     def logGPISanimationSetup(self):
