@@ -7,7 +7,7 @@ from matern32GP import GaussianProcess as GP
 import numpy as np
 
 lambda_whittle = 1.5                                        # Length scale of Whittle Kernal
-regressor = GP(2)                                           # Log gaussian implicit surface
+regressor = GP(3)                                           # Log gaussian implicit surface
 regressor.params.L = math.sqrt(2 * 3/2) / lambda_whittle    # Length scale of Matern 3_2 (See article, euristic choice)
 resolution = 0.2                                            # Resolution of state space (two point are considered the same if their distance is less than the resolution)
 
