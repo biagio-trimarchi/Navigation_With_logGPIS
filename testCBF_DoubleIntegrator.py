@@ -16,11 +16,14 @@ import obstacles                                # Obstacle library
 import lidar                                    # Lidar library
 import numpy as np                              # Linear algebra library
 import logGPIS                                  # Log GPIS library
-from matern32GP import GaussianProcess as GP    # Gaussian Process with Matern Kernel
+from quadraticGP import GaussianProcess as GP   # Gaussian Process with Matern Kernel
 from quadprog import solve_qp                   # Solve quadratic programming
 import matplotlib.pyplot as plt                 # Plot library
 from matplotlib.patches import Wedge            # To draw wedge (Lidar fov))
-from celluloid import Camera                    # Camera for animated plots              
+from celluloid import Camera                    # Camera for animated plots     
+from tqdm import tqdm                           # Loading bar        
+from scipy.optimize import minimize             # To compare with other solution
+from scipy.optimize import Bounds               # To compare with other solution
 
 
 class Simulation:
@@ -30,7 +33,7 @@ class Simulation:
     # initialize
     def initialize(self):
         # Simulation Data
-        self.T = 50.0          # Total simulation time
+        self.T = 20.0          # Total simulation time
         self.dt = 0.01         # Sampling period
         self.t = 0.0           # Actual time
 
@@ -53,8 +56,8 @@ class Simulation:
         lidar.max_distance = 2.0        # Minimum sensing distance 
 
         # Controller data
-        self.kp = 0.1                   # Position gain
-        self.kv = 0.3                   # Velocity gain
+        self.kp = 1.1                   # Position gain
+        self.kv = 0.8                   # Velocity gain
 
         # Plot variables
         self.uNom = np.zeros((2, ))                 # Actual nominal input
@@ -65,18 +68,19 @@ class Simulation:
         self.minDistStory = [lidar.max_distance]    # List of minimum distance values
 
         # Control barrier function data
+        self.delta =  0.5
         self.alpha1 = 0.3                               # Class K multiplier
         self.alpha2 = 0.2                               # Class K multiplier
         self.kh = self.alpha1*self.alpha2               # h multiplier
         self.klfh = self.alpha1 + self.alpha2           # L_f h multiplier
 
-        self.BARRIER_TYPE = 'POINTWISE_OBSERVER'                  # Barrier function type: 
+        self.BARRIER_TYPE = 'POINTWISE'            # Barrier function type: 
                                                             # 'GROUND_TRUTH', 
                                                             # 'LOG_GPIS',
                                                             # 'POINTWISE', 
                                                             # 'POINTWISE_VARIANCE'
                                                             # 'POINTWISE_OBSERVER'
-        self.safeDist = 0.1                             # Safe distance
+        self.safeDist = 0.0                             # Safe distance
         
         # GP
         self.edfGP = GP(2)                          # Pointwise estimator
@@ -98,6 +102,7 @@ class Simulation:
         self.obs_l = 10.0                                           # Observer gain
 
         # Animation
+        self.animation_flag = False
         if self.BARRIER_TYPE == 'LOG_GPIS':
             self.logGPISanimationSetup()
         if self.BARRIER_TYPE == 'POINTWISE':
@@ -110,9 +115,10 @@ class Simulation:
         self.uNom = -self.kp * (self.p - self.pGoal) - self.kv * self.v     # PD controller
     
     def observer(self):
-        y = min(self.readings) - self.z[0]                      # Innovation term
+        y = min(self.readings) - self.z[0]                                          # Innovation term
         self.z[0] = self.z[0] + (self.z[1] + self.obs_l*self.obs_k1*y)*self.dt      # Update state 1
         self.z[1] = self.z[1] + (self.obs_l**2*self.obs_k1*y)*self.dt               # Update state 2
+
 
     # safetyFilter
     def safetyFilter(self):
@@ -168,7 +174,7 @@ class Simulation:
 
         # Pointwise GP min-norm based barrier function
         elif self.BARRIER_TYPE == 'POINTWISE':
-            if self.edfGP.params.N_samples > 0:
+            if self.edfGP.params.N_samples > 1:
                 grad_h = (np.concatenate( (self.edfGP.gradientPosterionMean(self.p).flatten(), np.zeros((2,))) )).reshape((1,4))
                 hess_h = np.block( [ 
                         [self.edfGP.hessianPosteriorMean(self.p) , np.zeros((2,2))],
@@ -184,7 +190,7 @@ class Simulation:
                 alpha_h = self.kh * (self.edfGP.posteriorMean(self.p) - self.safeDist).flatten()
                 alpha_lfh = self.klfh * lie_f_h
 
-                self.u = solve_qp(np.eye(2), self.uNom, lie_gf_h.T, -alpha_h - alpha_lfh - lie_f2_h)[0]
+                self.u = solve_qp(np.eye(2), self.uNom, lie_gf_h.T, self.delta - alpha_h - alpha_lfh - lie_f2_h)[0]
             else:
                 self.u = self.uNom
 
@@ -235,7 +241,8 @@ class Simulation:
 
     # run
     def run(self):
-        while self.t < self.T:
+        tspan = np.arange(0, self.T, self.dt)
+        for tt in tqdm(tspan):
             # Controller
             self.controller()                                                                   # Compute nominal control law
             self.safetyFilter()                                                                 # Filter control input
@@ -270,7 +277,8 @@ class Simulation:
                     logGPIS.train()                                     # Train GP
                     print('New samples collected: log-GPIS trained')    # Debug
                 
-                self.logGPISanimationAddFrame()
+                if self.animation_flag == True:
+                    self.logGPISanimationAddFrame()
             
             # Pointwise GP
             if self.BARRIER_TYPE == 'POINTWISE' or self.BARRIER_TYPE == 'POINTWISE_VARIANCE':
@@ -291,7 +299,8 @@ class Simulation:
                     self.edfGP.train()                                      # Train GP
                     print('New samples collected: pointwise GP trained')    # Debug
                 
-                self.edfGPanimationAddFrame()
+                if self.animation_flag == True:
+                    self.edfGPanimationAddFrame()
             
             # Pointwise GP observer
             if self.BARRIER_TYPE == 'POINTWISE_OBSERVER':
@@ -321,11 +330,11 @@ class Simulation:
             self.uNomStory.append(self.uNom)                            # Nominal control law
             self.time_stamps.append(self.t)                             # Time instants
             self.minDistStory.append(obstacles.minDistance(self.p))     # Minimum distance
-            self.zStory.append(self.z.copy())
+            self.zStory.append(self.z.copy())                           # Observer
 
             # DEBIG
             # print(self.t, self.edfGP.posteriorMean(self.p).flatten(), obstacles.minDistance(self.p)) # Debig
-            print(self.t)
+            # print(self.t)
 
     def plot(self):
         # Environment and trajectory
@@ -488,7 +497,7 @@ def main():
     sim.run()               # Run simulation
     sim.plot()              # Plot results
 
-    if sim.BARRIER_TYPE != 'GROUND_TRUTH':
+    if sim.animation_flag == True:
         sim.animation()         # Save animations
 
 # Run main when the script is executed
