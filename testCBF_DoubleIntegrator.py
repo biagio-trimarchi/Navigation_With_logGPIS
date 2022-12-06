@@ -17,7 +17,7 @@ import lidar                                    # Lidar library
 import numpy as np                              # Linear algebra library
 import logGPIS                                  # Log GPIS library
 from quadraticGP import GaussianProcess as GP   # Gaussian Process with Matern Kernel
-from quadprog import solve_qp                   # Solve quadratic programming
+from quadprog import solve_qp                   # Solve quadratic programming (https://github.com/quadprog/quadprog)
 import matplotlib.pyplot as plt                 # Plot library
 from matplotlib.patches import Wedge            # To draw wedge (Lidar fov))
 from celluloid import Camera                    # Camera for animated plots     

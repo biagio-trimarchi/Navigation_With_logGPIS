@@ -1,4 +1,4 @@
-# Little script to test the dron dynamics
+# Little script to test the drone dynamics
 
 # Libraries
 import agentDynamics as drone               # Agent library
@@ -7,6 +7,8 @@ import numpy as np                          # Linear algebra library
 import matplotlib.pyplot as plt             # Plot library
 import matplotlib.animation as animation    # Animation library
 from tqdm import tqdm                       # Loading bar
+from quadprog import solve_qp               # Solve quadratic programming (https://github.com/quadprog/quadprog)
+
 
 # Simulation
 class Simulation:
@@ -41,7 +43,16 @@ class Simulation:
             ddP.append(dP[i+1] - dP[i])         # Compute contol point of the acceleration profile
 
     def controller(self):
-        pass
+        # Extract drone parameters
+        m = drone.params['m']
+        J = drone.params['J']
+
+        # Virtual position controller
+        eps1 = 1.0
+        k1 = 1 / (4*m) * eps1 ** 2 + 5.0
+
+
+
     
     def plot(self):
         # Plot drone actual pose and attitude
@@ -114,8 +125,8 @@ class Simulation:
             
             xAx.set_data(
                                 [position[0] - xAxis[0]/2, position[0] + xAxis[0]/2],
-                                [position[1] - xAxis[1]/2, position[1] + xAxis[1]/2])       # Plot x axis
-            xAx.set_3d_properties([position[2] - xAxis[2]/2, position[2] + xAxis[2]/2])     # Plot x axis
+                                [position[1] - xAxis[1]/2, position[1] + xAxis[1]/2])       # Plot x-axis
+            xAx.set_3d_properties([position[2] - xAxis[2]/2, position[2] + xAxis[2]/2])     # Plot x-axis
         
             yAx.set_data(
                                 [position[0] - yAxis[0]/2, position[0] + yAxis[0]/2],
