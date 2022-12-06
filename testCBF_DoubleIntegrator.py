@@ -11,7 +11,7 @@
 # in acceleration
 
 # Libraries
-import agentDynamics
+import agentDynamics                            # Agent library
 import obstacles                                # Obstacle library
 import lidar                                    # Lidar library
 import numpy as np                              # Linear algebra library
