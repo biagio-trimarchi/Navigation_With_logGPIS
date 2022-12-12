@@ -60,9 +60,9 @@ def initialize_agent():
         return 0
     
     elif AGENT_TYPE == 'UAV':
-        params['m'] = 1.0           # Mass
-        params['I'] = 3*np.eye(3)     # Inertia moment
-        params['g'] = 9.81          # Gravity
+        params['m'] = 1.0               # Mass
+        params['I'] = 3*np.eye(3)       # Inertia moment
+        params['g'] = 9.81              # Gravity
 
         return 0
     
@@ -85,8 +85,9 @@ def f(x):
         f = np.zeros((12, ))
         
         # Translational part
-        f[0:3] = (x[3:6])                  # Translational velocity
-        f[5] = -params['g']                # Translational acceleration
+        x = x.flatten()
+        f[0:3] = x[3:6]                         # Translational velocity
+        f[5] = -params['g']                     # Translational acceleration
 
         # Rotational part
         f[6:9] = np.linalg.inv(Rvel(x[6], x[7], x[8])) @ x[9:]                         # Angular velocity
@@ -133,6 +134,7 @@ def g(x):
     elif AGENT_TYPE == 'DOUBLE_INTEGRATOR_3D':  # Double integrator forced flow
         return params['B']
     elif AGENT_TYPE == 'UAV':                   # Quadrotor
+        x = x.flatten()
         g = np.zeros((12, 4))
 
         # Translational part
